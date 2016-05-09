@@ -115,7 +115,7 @@ sub VERSION_MESSAGE()
 };
 
 
-# displays instance detail 
+# displays instance detail
 sub chk_vrrp_analyze($)
 {
    my $cnf     = shift;
