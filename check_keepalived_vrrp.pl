@@ -47,7 +47,7 @@ use Getopt::Std;
 $|++;
 
 our $PROGRAM_NAME    = 'check_keepalived_vrrp.pl';
-our $VERSION         = '0.1';
+our $VERSION         = '0.1a';
 our $DESCRIPTION     = 'Checks status of Keepalived VRRP process via SNMP';
 our $AUTHOR          = 'David M. Syzdek <david@syzdek.net>';
 
@@ -58,6 +58,8 @@ our $AUTHOR          = 'David M. Syzdek <david@syzdek.net>';
 # |              |
 # +-=-=-=-=-=-=-=+
 
+sub HELP_MESSAGE();
+sub VERSION_MESSAGE();
 sub chk_vrrp_analyze($);
 sub chk_vrrp_config($);
 sub chk_vrrp_detail($);
@@ -66,7 +68,6 @@ sub chk_vrrp_hex2inet($);
 sub chk_vrrp_hex2inet6($);
 sub chk_vrrp_nagios_code($);
 sub chk_vrrp_print($$$);
-sub chk_vrrp_usage();
 sub chk_vrrp_walk($);
 
 sub main(@);                     # main statement
@@ -80,7 +81,30 @@ sub main(@);                     # main statement
 
 sub HELP_MESSAGE()
 {
-   return(chk_vrrp_usage);
+   printf STDERR ("Usage: %s [OPTIONS]\n", $PROGRAM_NAME);
+   printf STDERR ("OPTIONS:\n");
+   printf STDERR ("  -a agent        SNMP agent address\n");
+   printf STDERR ("  -b              verify VRRP instance is backup\n");
+   printf STDERR ("  -c community    SNMP community string\n");
+   printf STDERR ("  -m              verify VRRP instance is master\n");
+   printf STDERR ("  -n name         VRRP instance name\n");
+   printf STDERR ("  -h              display this message\n");
+   printf STDERR ("  -q              quiet output\n");
+   printf STDERR ("  -t              display terse details\n");
+   printf STDERR ("  -V              display program version\n");
+   printf STDERR ("  -v version      SNMP version\n");
+   printf STDERR ("  -w weight       weight threshold of master instance\n");
+   printf STDERR ("  -x pattern      exclude virtual routers matching pattern\n");
+   printf STDERR ("\n");
+   printf STDERR ("NOTES:\n");
+   printf STDERR ("  By default, the desired state of an instance (backup or master) is determined by\n");
+   printf STDERR ("  comparing an instance's current state to its intitial state. Use '-b' or '-m' to\n");
+   printf STDERR ("  specify that an instance should be either in a backup state or a master state. If\n");
+   printf STDERR ("  a weight is specified, an instance is assumed to be master if its effective\n");
+   printf STDERR ("  priority (i.e. weight) is greater than or equal to the specified weight. The\n");
+   printf STDERR ("  arguments '-b', '-m', and '-w' are incompatible.\n");
+   printf STDERR ("\n");
+   return(0);
 };
 
 
@@ -89,6 +113,179 @@ sub VERSION_MESSAGE()
    printf ("%s (%s)\n\n", $PROGRAM_NAME, $VERSION);
    return 0;
 };
+
+
+# displays instance detail 
+sub chk_vrrp_analyze($)
+{
+   my $cnf     = shift;
+   my $vrouter;
+   my $state;
+
+
+   # determine status of each router
+   for $vrouter (sort {$a->{'name'} cmp $b->{'name'}} @{$cnf->{'vrouters'}})
+   {
+      if (($vrouter->{'name'} =~ $cnf->{'instance'}) && ($vrouter->{'name'} !~ $cnf->{'exclude'}))
+      {
+         $vrouter->{'desiredState'} = 'backup';
+         if (( $cnf->{'state'} ))
+         {
+            $vrouter->{'desiredState'} = $cnf->{'state'};
+         }
+         elsif (( $cnf->{'weight'} ))
+         {
+            if ($cnf->{'weight'} <= $vrouter->{'effectivePriority'})
+            {
+               $vrouter->{'desiredState'} = 'master';
+            };
+         }
+         else
+         {
+            $vrouter->{'desiredState'} = $vrouter->{'initialState'};
+         };
+         if  ($vrouter->{'state'} !~ /^$vrouter->{'desiredState'}$/)
+         {
+            if ($vrouter->{'desiredState'} =~ /^master$/i)
+            {
+               $vrouter->{'nagios'} = 'CRIT';
+               $cnf->{'crit'}->[@{$cnf->{'crit'}}] = $vrouter;
+            }
+            else
+            {
+               $vrouter->{'nagios'} = 'WARN';
+               $cnf->{'warn'}->[@{$cnf->{'warn'}}] = $vrouter;
+            };
+         }
+         else
+         {
+            $vrouter->{'nagios'} = 'OKAY';
+            $cnf->{'okay'}->[@{$cnf->{'okay'}}] = $vrouter;
+         };
+      };
+   };
+
+
+   $cnf->{'count_crit'} = @{$cnf->{'crit'}};
+   $cnf->{'count_warn'} = @{$cnf->{'warn'}};
+   $cnf->{'count_okay'} = @{$cnf->{'okay'}};
+   $cnf->{'count_all'}  = @{$cnf->{'crit'}};
+   $cnf->{'count_all'} += @{$cnf->{'warn'}};
+   $cnf->{'count_all'} += @{$cnf->{'okay'}};
+
+
+   return($vrouter);
+}
+
+
+sub chk_vrrp_config($)
+{
+   my $cnf = shift;
+   $cnf->{'agent'}                   = 'localhost';
+   $cnf->{'version'}                 = '2c';
+   $cnf->{'community'}               = 'public';
+   $cnf->{'state'}                   = 0;
+   $cnf->{'weight'}                  = 0;
+   $cnf->{'instance'}                = '^.*$';
+   $cnf->{'exclude'}                 = '^$';
+   $cnf->{'routers'}                 = [];
+   $cnf->{'crit'}                    = [];
+   $cnf->{'warn'}                    = [];
+   $cnf->{'okay'}                    = [];
+   $cnf->{'all'}                     = [];
+
+   $Getopt::Std::STANDARD_HELP_VERSION=1;
+
+   if (!(getopts("a:bc:h:mn:qtVv:w:x:", $cnf)))
+   {
+      HELP_MESSAGE();
+      return(3);
+   };
+   if (($cnf->{'h'}))
+   {
+      HELP_MESSAGE();
+      return(3);
+   };
+
+   if ( (( defined($cnf->{'b'}) )) && (( defined($cnf->{'m'}) )) )
+   {
+      HELP_MESSAGE();
+      return(3);
+   };
+
+   $cnf->{'state'}       = defined($cnf->{'b'}) ? 'backup'    : $cnf->{'state'};
+   $cnf->{'state'}       = defined($cnf->{'m'}) ? 'master'    : $cnf->{'state'};
+   $cnf->{'terse'}       = defined($cnf->{'t'}) ? $cnf->{'t'} : 0;
+   $cnf->{'quiet'}       = defined($cnf->{'q'}) ? $cnf->{'q'} : 0;
+   $cnf->{'agent'}       = defined($cnf->{'a'}) ? $cnf->{'a'} : $cnf->{'agent'};
+   $cnf->{'version'}     = defined($cnf->{'v'}) ? $cnf->{'v'} : $cnf->{'version'};
+   $cnf->{'community'}   = defined($cnf->{'c'}) ? $cnf->{'c'} : $cnf->{'community'};
+   $cnf->{'instance'}    = defined($cnf->{'n'}) ? $cnf->{'n'} : $cnf->{'instance'};
+   $cnf->{'exclude'}     = defined($cnf->{'x'}) ? $cnf->{'x'} : $cnf->{'exclude'};
+   $cnf->{'weight'}      = defined($cnf->{'w'}) ? $cnf->{'w'} : $cnf->{'weight'};
+
+   if ( (($cnf->{'state'})) && (($cnf->{'weight'})) )
+   {
+      HELP_MESSAGE();
+      return(3);
+   };
+
+   if ($cnf->{'weight'} =~ /^([\d]+)$/)
+   {
+      $cnf->{'weight'} = $1;
+   } else {
+      printf("%s: weight threshold must be a numeric value\n\n", $PROGRAM_NAME);
+      return(3);
+   };
+
+   if (( $cnf->{'weight'} ))
+   {
+      $cnf->{'checkMethod'} = 'by weight';
+   } elsif (( $cnf->{'state'} )) {
+      $cnf->{'checkMethod'} = 'manually specified';
+   } else {
+      $cnf->{'checkMethod'} = 'by initial/current states';
+   };
+
+   return(0);
+};
+
+
+sub chk_vrrp_detail($)
+{
+   my $vrouter = shift;
+
+   # virtual router ID
+   printf("%s (%s)\n",                  $vrouter->{'name'}, $vrouter->{'nagios'});
+   chk_vrrp_print($vrouter, 'virtualRouterId',     "Virtual Router ID");
+   chk_vrrp_print($vrouter, 'syncGroupName',       "Sync Group");
+   chk_vrrp_print($vrouter, 'syncGroupState',      "Sync Group State");
+   chk_vrrp_print($vrouter, 'state',               "State (current)");
+   chk_vrrp_print($vrouter, 'desiredState',     "State (desired):");
+   #chk_vrrp_print($vrouter, 'wantedState',         "State (wanted)");
+   chk_vrrp_print($vrouter, 'initialState',        "State (initial)");
+   chk_vrrp_print($vrouter, 'basePriority',        "Weight (base)");
+   chk_vrrp_print($vrouter, 'effectivePriority',   "Weight (effective)");
+   chk_vrrp_print($vrouter, 'vips',                "Virtual IP Address");
+   chk_vrrp_print($vrouter, 'vipsStatus',          "Virtual IP Status");
+   chk_vrrp_print($vrouter, 'primaryInterface',    "Primary Interface");
+   chk_vrrp_print($vrouter, 'lvsSyncDaemon',       "LVS Sync Daemon");
+   chk_vrrp_print($vrouter, 'lvsSyncInterface',    "LVS Sync Interface");
+
+   return(0);
+}
+
+
+sub chk_vrrp_detail_terse($)
+{
+   my $vrouter = shift;
+
+   # virtual router ID
+   printf("%s (vid: %i) (%s)\n",  $vrouter->{'name'}, $vrouter->{'virtualRouterId'}, $vrouter->{'nagios'});
+   printf("State Current/Desired: %s/%s (vips: %s)\n", $vrouter->{'state'}, $vrouter->{'desiredState'}, $vrouter->{'vipsStatus'});
+
+   return(0);
+}
 
 
 sub chk_vrrp_hex2inet($)
@@ -115,6 +312,47 @@ sub chk_vrrp_hex2inet6($)
    $hexstr =~ s/:0+([0-9a-f])/:$1/g;
    $hexstr =~ s/([0-9a-f]):$/$1/g;
    return('[' . $hexstr . ']');
+};
+
+
+sub chk_vrrp_nagios_code($)
+{
+   my $cnf = shift;
+   if ($cnf->{'count_crit'} != 0)
+   {
+      return(2);
+   };
+   if ($cnf->{'count_warn'} != 0)
+   {
+      return(1);
+   };
+   return(0);
+}
+
+
+sub chk_vrrp_print($$$)
+{
+   my $vrouter = shift;
+   my $key     = shift;
+   my $desc    = shift;
+   my $val;
+
+   if (!( defined($vrouter->{$key}) ))
+   {
+      return(0);
+   };
+
+   if (ref($vrouter->{$key}) ne 'ARRAY')
+   {
+      printf("%-21s %s\n", $desc . ':', $vrouter->{$key});
+   } else {
+      for $val (sort(@{$vrouter->{$key}}))
+      {
+         printf("%-21s %s\n", $desc . ':', $val);
+      };
+   };
+
+   return(0);
 };
 
 
@@ -261,249 +499,6 @@ sub chk_vrrp_walk($)
 
    return(0);
 };
-
-
-sub chk_vrrp_config($)
-{
-   my $cnf = shift;
-   $cnf->{'agent'}                   = 'localhost';
-   $cnf->{'version'}                 = '2c';
-   $cnf->{'community'}               = 'public';
-   $cnf->{'state'}                   = 0;
-   $cnf->{'weight'}                  = 0;
-   $cnf->{'instance'}                = '^.*$';
-   $cnf->{'exclude'}                 = '^$';
-   $cnf->{'routers'}                 = [];
-   $cnf->{'crit'}                    = [];
-   $cnf->{'warn'}                    = [];
-   $cnf->{'okay'}                    = [];
-   $cnf->{'all'}                     = [];
-
-   $Getopt::Std::STANDARD_HELP_VERSION=1;
-
-   if (!(getopts("a:bc:h:mn:qtVv:w:x:", $cnf)))
-   {
-      chk_vrrp_usage();
-      return(3);
-   };
-   if (($cnf->{'h'}))
-   {
-      chk_vrrp_usage();
-      return(3);
-   };
-
-   if ( (( defined($cnf->{'b'}) )) && (( defined($cnf->{'m'}) )) )
-   {
-      chk_vrrp_usage();
-      return(3);
-   };
-
-   $cnf->{'state'}       = defined($cnf->{'b'}) ? 'backup'    : $cnf->{'state'};
-   $cnf->{'state'}       = defined($cnf->{'m'}) ? 'master'    : $cnf->{'state'};
-   $cnf->{'terse'}       = defined($cnf->{'t'}) ? $cnf->{'t'} : 0;
-   $cnf->{'quiet'}       = defined($cnf->{'q'}) ? $cnf->{'q'} : 0;
-   $cnf->{'agent'}       = defined($cnf->{'a'}) ? $cnf->{'a'} : $cnf->{'agent'};
-   $cnf->{'version'}     = defined($cnf->{'v'}) ? $cnf->{'v'} : $cnf->{'version'};
-   $cnf->{'community'}   = defined($cnf->{'c'}) ? $cnf->{'c'} : $cnf->{'community'};
-   $cnf->{'instance'}    = defined($cnf->{'n'}) ? $cnf->{'n'} : $cnf->{'instance'};
-   $cnf->{'exclude'}     = defined($cnf->{'x'}) ? $cnf->{'x'} : $cnf->{'exclude'};
-   $cnf->{'weight'}      = defined($cnf->{'w'}) ? $cnf->{'w'} : $cnf->{'weight'};
-
-   if ( (($cnf->{'state'})) && (($cnf->{'weight'})) )
-   {
-      chk_vrrp_usage();
-      return(3);
-   };
-
-   if ($cnf->{'weight'} =~ /^([\d]+)$/)
-   {
-      $cnf->{'weight'} = $1;
-   } else {
-      printf("%s: weight threshold must be a numeric value\n\n", $PROGRAM_NAME);
-      return(3);
-   };
-
-   if (( $cnf->{'weight'} ))
-   {
-      $cnf->{'checkMethod'} = 'by weight';
-   } elsif (( $cnf->{'state'} )) {
-      $cnf->{'checkMethod'} = 'manually specified';
-   } else {
-      $cnf->{'checkMethod'} = 'by initial/current states';
-   };
-
-   return(0);
-};
-
-
-sub chk_vrrp_usage()
-{
-   printf STDERR ("Usage: %s [OPTIONS]\n", $PROGRAM_NAME);
-   printf STDERR ("OPTIONS:\n");
-   printf STDERR ("  -a agent        SNMP agent address\n");
-   printf STDERR ("  -b              verify VRRP instance is backup\n");
-   printf STDERR ("  -c community    SNMP community string\n");
-   printf STDERR ("  -m              verify VRRP instance is master\n");
-   printf STDERR ("  -n name         VRRP instance name\n");
-   printf STDERR ("  -h              display this message\n");
-   printf STDERR ("  -q              quiet output\n");
-   printf STDERR ("  -t              display terse details\n");
-   printf STDERR ("  -V              display program version\n");
-   printf STDERR ("  -v version      SNMP version\n");
-   printf STDERR ("  -w weight       weight threshold of master instance\n");
-   printf STDERR ("  -x pattern      exclude virtual routers matching pattern\n");
-   printf STDERR ("\n");
-   printf STDERR ("NOTES:\n");
-   printf STDERR ("  By default, the desired state of an instance (backup or master) is determined by\n");
-   printf STDERR ("  comparing an instance's current state to its intitial state. Use '-b' or '-m' to\n");
-   printf STDERR ("  specify that an instance should be either in a backup state or a master state. If\n");
-   printf STDERR ("  a weight is specified, an instance is assumed to be master if its effective\n");
-   printf STDERR ("  priority (i.e. weight) is greater than or equal to the specified weight. The\n");
-   printf STDERR ("  arguments '-b', '-m', and '-w' are incompatible.\n");
-   printf STDERR ("\n");
-   return(0);
-};
-
-
-# displays instance detail 
-sub chk_vrrp_analyze($)
-{
-   my $cnf     = shift;
-   my $vrouter;
-   my $state;
-
-
-   # determine status of each router
-   for $vrouter (sort {$a->{'name'} cmp $b->{'name'}} @{$cnf->{'vrouters'}})
-   {
-      if (($vrouter->{'name'} =~ $cnf->{'instance'}) && ($vrouter->{'name'} !~ $cnf->{'exclude'}))
-      {
-         $vrouter->{'desiredState'} = 'backup';
-         if (( $cnf->{'state'} ))
-         {
-            $vrouter->{'desiredState'} = $cnf->{'state'};
-         }
-         elsif (( $cnf->{'weight'} ))
-         {
-            if ($cnf->{'weight'} <= $vrouter->{'effectivePriority'})
-            {
-               $vrouter->{'desiredState'} = 'master';
-            };
-         }
-         else
-         {
-            $vrouter->{'desiredState'} = $vrouter->{'initialState'};
-         };
-         if  ($vrouter->{'state'} !~ /^$vrouter->{'desiredState'}$/)
-         {
-            if ($vrouter->{'desiredState'} =~ /^master$/i)
-            {
-               $vrouter->{'nagios'} = 'CRIT';
-               $cnf->{'crit'}->[@{$cnf->{'crit'}}] = $vrouter;
-            }
-            else
-            {
-               $vrouter->{'nagios'} = 'WARN';
-               $cnf->{'warn'}->[@{$cnf->{'warn'}}] = $vrouter;
-            };
-         }
-         else
-         {
-            $vrouter->{'nagios'} = 'OKAY';
-            $cnf->{'okay'}->[@{$cnf->{'okay'}}] = $vrouter;
-         };
-      };
-   };
-
-
-   $cnf->{'count_crit'} = @{$cnf->{'crit'}};
-   $cnf->{'count_warn'} = @{$cnf->{'warn'}};
-   $cnf->{'count_okay'} = @{$cnf->{'okay'}};
-   $cnf->{'count_all'}  = @{$cnf->{'crit'}};
-   $cnf->{'count_all'} += @{$cnf->{'warn'}};
-   $cnf->{'count_all'} += @{$cnf->{'okay'}};
-
-
-   return($vrouter);
-}
-
-
-sub chk_vrrp_print($$$)
-{
-   my $vrouter = shift;
-   my $key     = shift;
-   my $desc    = shift;
-   my $val;
-
-   if (!( defined($vrouter->{$key}) ))
-   {
-      return(0);
-   };
-
-   if (ref($vrouter->{$key}) ne 'ARRAY')
-   {
-      printf("%-21s %s\n", $desc . ':', $vrouter->{$key});
-   } else {
-      for $val (sort(@{$vrouter->{$key}}))
-      {
-         printf("%-21s %s\n", $desc . ':', $val);
-      };
-   };
-
-   return(0);
-};
-
-
-sub chk_vrrp_detail($)
-{
-   my $vrouter = shift;
-
-   # virtual router ID
-   printf("%s (%s)\n",                  $vrouter->{'name'}, $vrouter->{'nagios'});
-   chk_vrrp_print($vrouter, 'virtualRouterId',     "Virtual Router ID");
-   chk_vrrp_print($vrouter, 'syncGroupName',       "Sync Group");
-   chk_vrrp_print($vrouter, 'syncGroupState',      "Sync Group State");
-   chk_vrrp_print($vrouter, 'state',               "State (current)");
-   chk_vrrp_print($vrouter, 'desiredState',     "State (desired):");
-   #chk_vrrp_print($vrouter, 'wantedState',         "State (wanted)");
-   chk_vrrp_print($vrouter, 'initialState',        "State (initial)");
-   chk_vrrp_print($vrouter, 'basePriority',        "Weight (base)");
-   chk_vrrp_print($vrouter, 'effectivePriority',   "Weight (effective)");
-   chk_vrrp_print($vrouter, 'vips',                "Virtual IP Address");
-   chk_vrrp_print($vrouter, 'vipsStatus',          "Virtual IP Status");
-   chk_vrrp_print($vrouter, 'primaryInterface',    "Primary Interface");
-   chk_vrrp_print($vrouter, 'lvsSyncDaemon',       "LVS Sync Daemon");
-   chk_vrrp_print($vrouter, 'lvsSyncInterface',    "LVS Sync Interface");
-
-   return(0);
-}
-
-
-sub chk_vrrp_detail_terse($)
-{
-   my $vrouter = shift;
-
-   # virtual router ID
-   printf("%s (vid: %i) (%s)\n",  $vrouter->{'name'}, $vrouter->{'virtualRouterId'}, $vrouter->{'nagios'});
-   printf("State Current/Desired: %s/%s (vips: %s)\n", $vrouter->{'state'}, $vrouter->{'desiredState'}, $vrouter->{'vipsStatus'});
-
-   return(0);
-}
-
-
-sub chk_vrrp_nagios_code($)
-{
-   my $cnf = shift;
-   if ($cnf->{'count_crit'} != 0)
-   {
-      return(2);
-   };
-   if ($cnf->{'count_warn'} != 0)
-   {
-      return(1);
-   };
-   return(0);
-}
 
 
 # +-=-=-=-=-=-=-=-=-+
