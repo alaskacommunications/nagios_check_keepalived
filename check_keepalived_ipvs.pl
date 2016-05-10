@@ -47,7 +47,7 @@ use Getopt::Std;
 $|++;
 
 our $PROGRAM_NAME    = 'check_keepalived_ipvs.pl';
-our $VERSION         = '0.1';
+our $VERSION         = '0.2';
 our $DESCRIPTION     = 'Checks status of Keepalived IPVS/LVS process via SNMP';
 our $AUTHOR          = 'David M. Syzdek <david@syzdek.net>';
 
