@@ -1,7 +1,8 @@
 Nagios Check Keepalived
 =======================
 
-   Nagios plugins for monitoring Keepalived VRRP and IPVS subsystems via SNMP. This package contains the following Nagios checks:
+   Nagios plugins for monitoring Keepalived VRRP and IPVS subsystems via SNMP.
+   This package contains the following Nagios checks:
 
    * check_keepalived_vrrp.pl - Checks VRRP subsystem
    * check_keepalived_ipvs.pl - Checks IPVS subsystem
@@ -49,7 +50,8 @@ Script Usage
 Example Output (IPVS)
 ---------------------
 
-        syzdek@nagios$ /usr/libexec/nagios/check_keepalived_ipvs.pl -a dnslvs1.example.com -c public
+        syzdek@nagios$ /usr/libexec/nagios/check_keepalived_ipvs.pl \
+        > -a dnslvs1.example.com -c public
         Virtual Servers: 2 OKAY - Keepalived v1.2.19 (04/19,2016)|
         -
         Router ID:     dnslvs1.example.com
@@ -94,7 +96,8 @@ Example Output (IPVS)
 Example Output (VRRP)
 ---------------------
 
-       syzdek@nagios$ /usr/libexec/nagios/check_keepalived_vrrp.pl -a dnslvs1.example.com -c public
+        syzdek@nagios$ /usr/libexec/nagios/check_keepalived_vrrp.pl \
+        > -a dnslvs1.example.com -c public
         Virtual Routers: 2 OKAY - Keepalived v1.2.19 (04/19,2016)|
         -
         Router ID:     dnslvs1.example.com
@@ -164,22 +167,25 @@ Example Nagios Configurations (Command Objects)
            command_line    $USER1$/check_keepalived_ipvs.pl -c public -a $HOSTADDRESS$
         }
         
-        # Warn if 2 servers are down and critical if less than 25% of the servers are up
+        # Warn if 2 servers are down and critical if less than 25% of the
+        # servers are up
         define command{
            command_name    check_keepalived_ipvs
            command_line    $USER1$/check_keepalived_ipvs.pl -c public -a $HOSTADDRESS$ -w 2 -C 25
         }
         
-        # Warn if 25% of servers are down and critical if less than 50% of the servers are up
+        # Warn if 25% of servers are down and critical if less than 50% of the
+        # servers are up
         # ignore quorum paramters
         define command{
            command_name    check_keepalived_ipvs
            command_line    $USER1$/check_keepalived_ipvs.pl -c public -a $HOSTADDRESS$ -W 75 -C 50 -Q
         }
 
-   By default the checks provide both the default output text and long text.  If the checks are being called
-   via NRPE, the long text can be shortened by enabling terse output with the `-t` option. Additionally, long
-   text can be completely disabled by providing the '-q' option to the checks.
+   By default the checks provide both the default output text and long text.
+   If the checks are being called via NRPE, the long text can be shortened by
+   enabling terse output with the `-t` option. Additionally, long text can be
+   completely disabled by providing the '-q' option to the checks.
 
 Example Nagios Configurations (Service Objects)
 -----------------------------------------------
