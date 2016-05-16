@@ -364,16 +364,12 @@ sub chk_vrrp_walk($)
    my $vb;
    my $sess;
    my $key;
-   my $oldkey;
-   my $newkey;
-   my $glb;
-   my $vit;
-   my $vat;
-   my $vsgt;
-   my $vsgmt;
+   my $vrrptable;;
+   my $vaddrtable;
+   my $synctable;
+   my $membertable;
    my $inst;
    my $grp;
-   my $addr;
 
 
    $vrouters = [];
@@ -420,25 +416,25 @@ sub chk_vrrp_walk($)
 
 
    # load VRRP instance table
-   $vit = $sess->gettable('KEEPALIVED-MIB::vrrpInstanceTable');
+   $vrrptable = $sess->gettable('KEEPALIVED-MIB::vrrpInstanceTable');
    if ($sess->{ErrorNum})
    {
       printf("VRRP UNKNOWN: SNMP error: %s\n", $sess->{'ErrorStr'});
       return(3);
    };
-   if (!( defined($vit) ))
+   if (!( defined($vrrptable) ))
    {
       printf("VRRP CRITICAL: keepalived does not have a  VRRP instances.\n");
       return(2);
    };
-   if (keys(%{$vit}) == 0)
+   if (keys(%{$vrrptable}) == 0)
    {
       printf("VRRP CRITICAL: keepalived does not have a  VRRP instances.\n");
       return(2);
    };
-   for my $key (keys(%{$vit}))
+   for my $key (keys(%{$vrrptable}))
    {
-      $inst = $vit->{$key};
+      $inst = $vrrptable->{$key};
       for my $oldkey (keys(%{$inst}))
       {
          my $newkey = $oldkey;
@@ -453,44 +449,44 @@ sub chk_vrrp_walk($)
 
 
    # load VRRP address table
-   $vat = $sess->gettable('KEEPALIVED-MIB::vrrpAddressTable');
+   $vaddrtable = $sess->gettable('KEEPALIVED-MIB::vrrpAddressTable');
    if ($sess->{ErrorNum})
    {
       printf("VRRP UNKNOWN: SNMP error: %s\n", $sess->{'ErrorStr'});
       return(3);
    };
-   if (keys(%{$vat}) == 0)
+   if (keys(%{$vaddrtable}) == 0)
    {
       printf("VRRP CRITICAL: keepalived is missing virtual addresses\n");
       return(2);
    };
-   if (( defined($vat) ))
+   if (( defined($vaddrtable) ))
    {
-      for $key (keys(%{$vat}))
+      for $key (keys(%{$vaddrtable}))
       {
-         $inst = $vit->{$vat->{$key}->{'vrrpInstanceIndex'}};
-         if ($vat->{$key}->{'vrrpAddressType'} =~ /^ipv4$/)
+         $inst = $vrrptable->{$vaddrtable->{$key}->{'vrrpInstanceIndex'}};
+         if ($vaddrtable->{$key}->{'vrrpAddressType'} =~ /^ipv4$/)
          {
-            $inst->{'vips'}->[@{$inst->{'vips'}}] = chk_vrrp_hex2inet($vat->{$key}->{'vrrpAddressValue'});
+            $inst->{'vips'}->[@{$inst->{'vips'}}] = chk_vrrp_hex2inet($vaddrtable->{$key}->{'vrrpAddressValue'});
          };
-         if ($vat->{$key}->{'vrrpAddressType'} =~ /^ipv6$/)
+         if ($vaddrtable->{$key}->{'vrrpAddressType'} =~ /^ipv6$/)
          {
-            $inst->{'vips'}->[@{$inst->{'vips'}}] = chk_vrrp_hex2inet6($vat->{$key}->{'vrrpAddressValue'});
+            $inst->{'vips'}->[@{$inst->{'vips'}}] = chk_vrrp_hex2inet6($vaddrtable->{$key}->{'vrrpAddressValue'});
          };
-         $inst->{'vips'}->[@{$inst->{'vips'}} - 1] .= ' (' . $vat->{$key}->{'vrrpAddressStatus'} . ')';
+         $inst->{'vips'}->[@{$inst->{'vips'}} - 1] .= ' (' . $vaddrtable->{$key}->{'vrrpAddressStatus'} . ')';
       };
    };
 
 
    # load VRRP group tables
-   $vsgt  = $sess->gettable('KEEPALIVED-MIB::vrrpSyncGroupTable');
-   $vsgmt = $sess->gettable('KEEPALIVED-MIB::vrrpSyncGroupMemberTable');
-   if (( defined($vsgt) ))
+   $synctable   = $sess->gettable('KEEPALIVED-MIB::vrrpSyncGroupTable');
+   $membertable = $sess->gettable('KEEPALIVED-MIB::vrrpSyncGroupMemberTable');
+   if (( defined($synctable) ))
    {
-      for my $key (keys(%{$vsgmt}))
+      for my $key (keys(%{$membertable}))
       {
-         $inst = $vit->{$vsgmt->{$key}->{'vrrpSyncGroupMemberInstanceIndex'}};
-         $grp  = $vsgt->{$vsgmt->{$key}->{'vrrpSyncGroupIndex'}};
+         $inst = $vrrptable->{$membertable->{$key}->{'vrrpSyncGroupMemberInstanceIndex'}};
+         $grp  = $synctable->{$membertable->{$key}->{'vrrpSyncGroupIndex'}};
          $inst->{'syncGroupName'}  = $grp->{'vrrpSyncGroupName'};
          $inst->{'syncGroupState'} = $grp->{'vrrpSyncGroupState'};
       };
