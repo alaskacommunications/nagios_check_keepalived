@@ -131,7 +131,7 @@ sub chk_ipvs_analyze($)
       if (($vinst->{'name'} =~ $cnf->{'include'}) && ($vinst->{'name'} !~ $cnf->{'exclude'}))
       {
          $count   = $vinst->{'realServersTotal'} - $vinst->{'realServersUp'};
-         $percent = ($vinst->{'realServersUp'} * 100) / $vinst->{'realServersTotal'};
+         $percent = int(($vinst->{'realServersUp'} * 100) / $vinst->{'realServersTotal'});
 
          if ( ($vinst->{'quorumStatus'} ne 'met') && (!($cnf->{'ignoreQuorum'})) )
          {
