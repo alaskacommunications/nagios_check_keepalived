@@ -1,13 +1,15 @@
 Nagios Check Keepalived
 =======================
-Nagios plugins for monitoring Keepalived VRRP and IPVS subsystems via SNMP. This package contains the following Nagios checks:
-* check_keepalived_vrrp.pl - Checks VRRP subsystem
-* check_keepalived_ipvs.pl - Checks IPVS subsystem
+
+   Nagios plugins for monitoring Keepalived VRRP and IPVS subsystems via SNMP. This package contains the following Nagios checks:
+
+   * check_keepalived_vrrp.pl - Checks VRRP subsystem
+   * check_keepalived_ipvs.pl - Checks IPVS subsystem
 
 Script Usage
 ------------
 
-check_keepalived_ipvs.pl:
+   check_keepalived_ipvs.pl:
 
         Usage: check_keepalived_ipvs.pl [OPTIONS]
         OPTIONS:
@@ -26,7 +28,7 @@ check_keepalived_ipvs.pl:
           -W percent      WARN, if percentage of servers is below percent
           -x pattern      exclude virtual servers matching pattern
 
-check_keepalived_vrrp.pl:
+   check_keepalived_vrrp.pl:
 
         Usage: check_keepalived_vrrp.pl [OPTIONS]
         OPTIONS:
@@ -129,7 +131,7 @@ Example Output (VRRP)
 Example Nagios Configurations (Command Objects)
 -----------------------------------------------
 
-Example command object configurations for VRRP:
+   Example command object configurations for VRRP:
 
         # VRRP desired state is determined by initial state
         define command{
@@ -154,7 +156,7 @@ Example command object configurations for VRRP:
            command_line    $USER1$/check_keepalived_vrrp.pl-c public -a $HOSTADDRESS$ -b
         }
 
-Example command object configurations for IPVS:
+   Example command object configurations for IPVS:
 
         # Use default paramters
         define command{
@@ -175,14 +177,14 @@ Example command object configurations for IPVS:
            command_line    $USER1$/check_keepalived_ipvs.pl -c public -a $HOSTADDRESS$ -W 75 -C 50 -Q
         }
 
-By default the checks provide both the default output text and long text.  If the checks are being called
-via NRPE, the long text can be shortened by enabling terse output with the `-t` option. Additionally, long
-text can be completely disabled by providing the '-q' option to the checks.
+   By default the checks provide both the default output text and long text.  If the checks are being called
+   via NRPE, the long text can be shortened by enabling terse output with the `-t` option. Additionally, long
+   text can be completely disabled by providing the '-q' option to the checks.
 
 Example Nagios Configurations (Service Objects)
 -----------------------------------------------
 
-VRRP service checks:
+   VRRP service checks:
 
         define service{
            use                     generic-service
@@ -192,7 +194,7 @@ VRRP service checks:
            check_command           check_keepalived_vrrp
         }
 
-IPVS service checks:
+   IPVS service checks:
 
         define service{
            use                     generic-service
