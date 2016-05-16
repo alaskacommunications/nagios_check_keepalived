@@ -6,6 +6,7 @@ Nagios Check Keepalived
 
    * check_keepalived_vrrp.pl - Checks VRRP subsystem
    * check_keepalived_ipvs.pl - Checks IPVS subsystem
+   * dump_keepalived.pl       - Dumps SNMP information (used for debugging)
 
 Script Usage
 ------------
