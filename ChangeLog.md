@@ -6,6 +6,7 @@ Nagios Check Keepalived
    * adding SNMP debugging tool (syzdek)
    * updating IPVS checks to treat percentages as ints (syzdek)
    * cleaning up variable names in vrrp check (syzdek)
+   * adding support for virtual server groups (syzdek)
 
 #### 0.2
    * first public release (syzdek)

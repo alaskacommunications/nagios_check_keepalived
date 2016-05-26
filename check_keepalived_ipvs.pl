@@ -489,16 +489,20 @@ sub chk_ipvs_walk($)
          if ($vinst->{'addrType'} =~ /^ipv4$/)
          {
             $vinst->{'address'} = chk_ipvs_hex2inet($vinst->{'address'});
-            $vinst->{'name'} = $vinst->{'address'} . ':' . $vinst->{'port'};
+            $vinst->{'name'} = 'ip4:' . $vinst->{'address'} . ':' . $vinst->{'port'};
          };
          if ($vinst->{'addrType'} =~ /^ipv6$/)
          {
             $vinst->{'address'} = chk_ipvs_hex2inet6($vinst->{'address'});
-            $vinst->{'name'} = '[' . $vinst->{'address'} . ']:' . $vinst->{'port'};
+            $vinst->{'name'} = 'ip6:[' . $vinst->{'address'} . ']:' . $vinst->{'port'};
          };
          $vinst->{'name'} .= ' (' . $vinst->{'addrType'} . '/' . $vinst->{'protocol'} . ')';
       } elsif ((defined($vinst->{'fwMark'}))) {
             $vinst->{'name'} = 'fwmark:' . $vinst->{'fwMark'} . ' (' . $vinst->{'protocol'} . ')';
+      } elsif ((defined($vinst->{'nameOfGroup'}))) {
+            $vinst->{'name'} = 'group:' . $vinst->{'nameOfGroup'} . ' (' . $vinst->{'protocol'} . ')';
+      } else {
+            $vinst->{'name'} = 'unknown' . ' (' . $vinst->{'protocol'} . ')';
       };
 
       # set initial parameters
