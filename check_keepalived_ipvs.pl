@@ -498,11 +498,11 @@ sub chk_ipvs_walk($)
          };
          $vinst->{'name'} .= ' (' . $vinst->{'addrType'} . '/' . $vinst->{'protocol'} . ')';
       } elsif ((defined($vinst->{'fwMark'}))) {
-            $vinst->{'name'} = 'fwmark:' . $vinst->{'fwMark'} . ' (' . $vinst->{'protocol'} . ')';
+         $vinst->{'name'} = 'fwmark:' . $vinst->{'fwMark'} . ' (' . $vinst->{'protocol'} . ')';
       } elsif ((defined($vinst->{'nameOfGroup'}))) {
-            $vinst->{'name'} = 'group:' . $vinst->{'nameOfGroup'} . ' (' . $vinst->{'protocol'} . ')';
+         $vinst->{'name'} = 'group:' . $vinst->{'nameOfGroup'} . ' (' . $vinst->{'protocol'} . ')';
       } else {
-            $vinst->{'name'} = 'unknown' . ' (' . $vinst->{'protocol'} . ')';
+         $vinst->{'name'} = 'unknown' . ' (' . $vinst->{'protocol'} . ')';
       };
 
       # set initial parameters
