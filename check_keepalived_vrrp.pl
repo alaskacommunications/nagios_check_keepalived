@@ -95,6 +95,7 @@ sub HELP_MESSAGE()
    printf STDERR ("  -v version      SNMP version\n");
    printf STDERR ("  -w weight       weight threshold of master instance\n");
    printf STDERR ("  -x pattern      exclude virtual routers matching pattern\n");
+   printf STDERR ("  -X pattern      exclude scripts matching pattern\n");
    printf STDERR ("\n");
    printf STDERR ("NOTES:\n");
    printf STDERR ("  By default, the desired state of an instance (backup or master) is determined by\n");
@@ -167,9 +168,9 @@ sub chk_vrrp_analyze($)
    };
 
    # check status of each checkscript
-   for $vscript (sort {$a->{'vrrpInstanceName'} cmp $b->{'vrrpInstanceName'}} @{$cnf->{'vscripts'}})
+   for $vscript (sort {$a->{'vrrpScriptName'} cmp $b->{'vrrpScriptName'}} @{$cnf->{'vscripts'}})
    {
-       if ($vscript->{'vrrpScriptResult'} !~ /^good$/i)
+       if (($vscript->{'vrrpScriptResult'} !~ /^good$/i) && ($vscript->{'vrrpScriptName'} !~ $cnf->{'excludeScript'}))
        {
           $vscript->{'nagios'} = 'CRIT';
           $cnf->{'critScript'}->[@{$cnf->{'critScript'}}] = $vscript;
@@ -210,6 +211,7 @@ sub chk_vrrp_config($)
    $cnf->{'weight'}                  = 0;
    $cnf->{'instance'}                = '^.*$';
    $cnf->{'exclude'}                 = '^$';
+   $cnf->{'excludeScript'}           = '^$';
    $cnf->{'routers'}                 = [];
    $cnf->{'critRouter'}              = [];
    $cnf->{'critScript'}              = [];
@@ -220,7 +222,7 @@ sub chk_vrrp_config($)
 
    $Getopt::Std::STANDARD_HELP_VERSION=1;
 
-   if (!(getopts("a:bc:h:mn:qtVv:w:x:", $cnf)))
+   if (!(getopts("a:bc:h:mn:qtVv:w:x:X:", $cnf)))
    {
       HELP_MESSAGE();
       return(3);
@@ -237,16 +239,17 @@ sub chk_vrrp_config($)
       return(3);
    };
 
-   $cnf->{'state'}       = defined($cnf->{'b'}) ? 'backup'    : $cnf->{'state'};
-   $cnf->{'state'}       = defined($cnf->{'m'}) ? 'master'    : $cnf->{'state'};
-   $cnf->{'terse'}       = defined($cnf->{'t'}) ? $cnf->{'t'} : 0;
-   $cnf->{'quiet'}       = defined($cnf->{'q'}) ? $cnf->{'q'} : 0;
-   $cnf->{'agent'}       = defined($cnf->{'a'}) ? $cnf->{'a'} : $cnf->{'agent'};
-   $cnf->{'version'}     = defined($cnf->{'v'}) ? $cnf->{'v'} : $cnf->{'version'};
-   $cnf->{'community'}   = defined($cnf->{'c'}) ? $cnf->{'c'} : $cnf->{'community'};
-   $cnf->{'instance'}    = defined($cnf->{'n'}) ? $cnf->{'n'} : $cnf->{'instance'};
-   $cnf->{'exclude'}     = defined($cnf->{'x'}) ? $cnf->{'x'} : $cnf->{'exclude'};
-   $cnf->{'weight'}      = defined($cnf->{'w'}) ? $cnf->{'w'} : $cnf->{'weight'};
+   $cnf->{'state'}         = defined($cnf->{'b'}) ? 'backup'    : $cnf->{'state'};
+   $cnf->{'state'}         = defined($cnf->{'m'}) ? 'master'    : $cnf->{'state'};
+   $cnf->{'terse'}         = defined($cnf->{'t'}) ? $cnf->{'t'} : 0;
+   $cnf->{'quiet'}         = defined($cnf->{'q'}) ? $cnf->{'q'} : 0;
+   $cnf->{'agent'}         = defined($cnf->{'a'}) ? $cnf->{'a'} : $cnf->{'agent'};
+   $cnf->{'version'}       = defined($cnf->{'v'}) ? $cnf->{'v'} : $cnf->{'version'};
+   $cnf->{'community'}     = defined($cnf->{'c'}) ? $cnf->{'c'} : $cnf->{'community'};
+   $cnf->{'instance'}      = defined($cnf->{'n'}) ? $cnf->{'n'} : $cnf->{'instance'};
+   $cnf->{'exclude'}       = defined($cnf->{'x'}) ? $cnf->{'x'} : $cnf->{'exclude'};
+   $cnf->{'excludeScript'} = defined($cnf->{'X'}) ? $cnf->{'X'} : $cnf->{'excludeScript'};
+   $cnf->{'weight'}        = defined($cnf->{'w'}) ? $cnf->{'w'} : $cnf->{'weight'};
 
    if ( (($cnf->{'state'})) && (($cnf->{'weight'})) )
    {
@@ -631,9 +634,13 @@ sub main(@)
    {
       printf("-\n");
       printf("vScripts Count: %i\n", scalar(keys @{$cnf->{'vscripts'}}));
-      for $vscript (sort {$a->{'vrrpInstanceName'} cmp $b->{'vrrpInstanceName'}} @{$cnf->{'vscripts'}})
+      for $vscript (sort {$a->{'vrrpScriptName'} cmp $b->{'vrrpScriptName'}} @{$cnf->{'vscripts'}})
       {
          printf("-\n");
+         if ($vscript->{'vrrpScriptName'} =~ $cnf->{'excludeScript'})
+         {
+            $vscript->{'vrrpScriptResult'} .= " (Excluded)";
+         }
          chk_vrrp_print($vscript, 'vrrpScriptName',     "Script Name");
          chk_vrrp_print($vscript, 'vrrpScriptResult',     "Script Result");
          printf("-\n");
