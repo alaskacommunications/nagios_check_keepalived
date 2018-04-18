@@ -95,6 +95,7 @@ sub HELP_MESSAGE()
    printf STDERR ("  -v version      SNMP version\n");
    printf STDERR ("  -w weight       weight threshold of master instance\n");
    printf STDERR ("  -x pattern      exclude virtual routers matching pattern\n");
+   printf STDERR ("  -X pattern      exclude scripts matching pattern\n");
    printf STDERR ("\n");
    printf STDERR ("NOTES:\n");
    printf STDERR ("  By default, the desired state of an instance (backup or master) is determined by\n");
@@ -120,6 +121,7 @@ sub chk_vrrp_analyze($)
 {
    my $cnf     = shift;
    my $vrouter;
+   my $vscript;
    my $state;
 
 
@@ -149,29 +151,50 @@ sub chk_vrrp_analyze($)
             if ($vrouter->{'desiredState'} =~ /^master$/i)
             {
                $vrouter->{'nagios'} = 'CRIT';
-               $cnf->{'crit'}->[@{$cnf->{'crit'}}] = $vrouter;
+               $cnf->{'critRouter'}->[@{$cnf->{'critRouter'}}] = $vrouter;
             }
             else
             {
                $vrouter->{'nagios'} = 'WARN';
-               $cnf->{'warn'}->[@{$cnf->{'warn'}}] = $vrouter;
+               $cnf->{'warnRouter'}->[@{$cnf->{'warnRouter'}}] = $vrouter;
             };
          }
          else
          {
             $vrouter->{'nagios'} = 'OKAY';
-            $cnf->{'okay'}->[@{$cnf->{'okay'}}] = $vrouter;
+            $cnf->{'okayRouter'}->[@{$cnf->{'okayRouter'}}] = $vrouter;
          };
       };
    };
 
+   # check status of each checkscript
+   for $vscript (sort {$a->{'vrrpScriptName'} cmp $b->{'vrrpScriptName'}} @{$cnf->{'vscripts'}})
+   {
+       if (($vscript->{'vrrpScriptResult'} !~ /^good$/i) && ($vscript->{'vrrpScriptName'} !~ $cnf->{'excludeScript'}))
+       {
+          $vscript->{'nagios'} = 'CRIT';
+          $cnf->{'critScript'}->[@{$cnf->{'critScript'}}] = $vscript;
+       }
+       else
+       {
+          $vscript->{'nagios'} = 'OKAY';
+          $cnf->{'okayScript'}->[@{$cnf->{'okayScript'}}] = $vscript;
+       };
+   };
 
-   $cnf->{'count_crit'} = @{$cnf->{'crit'}};
-   $cnf->{'count_warn'} = @{$cnf->{'warn'}};
-   $cnf->{'count_okay'} = @{$cnf->{'okay'}};
-   $cnf->{'count_all'}  = @{$cnf->{'crit'}};
-   $cnf->{'count_all'} += @{$cnf->{'warn'}};
-   $cnf->{'count_all'} += @{$cnf->{'okay'}};
+   $cnf->{'count_crit_rtr'}    = @{$cnf->{'critRouter'}};
+   $cnf->{'count_crit_script'} = @{$cnf->{'critScript'}};
+   $cnf->{'count_crit'}        = $cnf->{'count_crit_rtr'};
+   $cnf->{'count_crit'}       += $cnf->{'count_crit_script'};
+   $cnf->{'count_warn_rtr'}    = @{$cnf->{'warnRouter'}};
+   $cnf->{'count_warn'}        = $cnf->{'count_warn_rtr'};
+   $cnf->{'count_okay_rtr'}    = @{$cnf->{'okayRouter'}};
+   $cnf->{'count_okay_script'} = @{$cnf->{'okayScript'}};
+   $cnf->{'count_okay'}        = $cnf->{'count_okay_rtr'};
+   $cnf->{'count_okay'}       += $cnf->{'count_okay_script'};
+   $cnf->{'count_all'}         = $cnf->{'count_crit'};
+   $cnf->{'count_all'}        += $cnf->{'count_warn'};
+   $cnf->{'count_all'}        += $cnf->{'count_okay'};
 
 
    return($vrouter);
@@ -188,15 +211,18 @@ sub chk_vrrp_config($)
    $cnf->{'weight'}                  = 0;
    $cnf->{'instance'}                = '^.*$';
    $cnf->{'exclude'}                 = '^$';
+   $cnf->{'excludeScript'}           = '^$';
    $cnf->{'routers'}                 = [];
-   $cnf->{'crit'}                    = [];
-   $cnf->{'warn'}                    = [];
-   $cnf->{'okay'}                    = [];
+   $cnf->{'critRouter'}              = [];
+   $cnf->{'critScript'}              = [];
+   $cnf->{'warnRouter'}              = [];
+   $cnf->{'okayRouter'}              = [];
+   $cnf->{'okayScript'}              = [];
    $cnf->{'all'}                     = [];
 
    $Getopt::Std::STANDARD_HELP_VERSION=1;
 
-   if (!(getopts("a:bc:h:mn:qtVv:w:x:", $cnf)))
+   if (!(getopts("a:bc:h:mn:qtVv:w:x:X:", $cnf)))
    {
       HELP_MESSAGE();
       return(3);
@@ -213,16 +239,17 @@ sub chk_vrrp_config($)
       return(3);
    };
 
-   $cnf->{'state'}       = defined($cnf->{'b'}) ? 'backup'    : $cnf->{'state'};
-   $cnf->{'state'}       = defined($cnf->{'m'}) ? 'master'    : $cnf->{'state'};
-   $cnf->{'terse'}       = defined($cnf->{'t'}) ? $cnf->{'t'} : 0;
-   $cnf->{'quiet'}       = defined($cnf->{'q'}) ? $cnf->{'q'} : 0;
-   $cnf->{'agent'}       = defined($cnf->{'a'}) ? $cnf->{'a'} : $cnf->{'agent'};
-   $cnf->{'version'}     = defined($cnf->{'v'}) ? $cnf->{'v'} : $cnf->{'version'};
-   $cnf->{'community'}   = defined($cnf->{'c'}) ? $cnf->{'c'} : $cnf->{'community'};
-   $cnf->{'instance'}    = defined($cnf->{'n'}) ? $cnf->{'n'} : $cnf->{'instance'};
-   $cnf->{'exclude'}     = defined($cnf->{'x'}) ? $cnf->{'x'} : $cnf->{'exclude'};
-   $cnf->{'weight'}      = defined($cnf->{'w'}) ? $cnf->{'w'} : $cnf->{'weight'};
+   $cnf->{'state'}         = defined($cnf->{'b'}) ? 'backup'    : $cnf->{'state'};
+   $cnf->{'state'}         = defined($cnf->{'m'}) ? 'master'    : $cnf->{'state'};
+   $cnf->{'terse'}         = defined($cnf->{'t'}) ? $cnf->{'t'} : 0;
+   $cnf->{'quiet'}         = defined($cnf->{'q'}) ? $cnf->{'q'} : 0;
+   $cnf->{'agent'}         = defined($cnf->{'a'}) ? $cnf->{'a'} : $cnf->{'agent'};
+   $cnf->{'version'}       = defined($cnf->{'v'}) ? $cnf->{'v'} : $cnf->{'version'};
+   $cnf->{'community'}     = defined($cnf->{'c'}) ? $cnf->{'c'} : $cnf->{'community'};
+   $cnf->{'instance'}      = defined($cnf->{'n'}) ? $cnf->{'n'} : $cnf->{'instance'};
+   $cnf->{'exclude'}       = defined($cnf->{'x'}) ? $cnf->{'x'} : $cnf->{'exclude'};
+   $cnf->{'excludeScript'} = defined($cnf->{'X'}) ? $cnf->{'X'} : $cnf->{'excludeScript'};
+   $cnf->{'weight'}        = defined($cnf->{'w'}) ? $cnf->{'w'} : $cnf->{'weight'};
 
    if ( (($cnf->{'state'})) && (($cnf->{'weight'})) )
    {
@@ -361,6 +388,7 @@ sub chk_vrrp_walk($)
    my $cnf = shift;
 
    my $vrouters;
+   my $vscripts;
    my $vb;
    my $sess;
    my $key;
@@ -371,13 +399,16 @@ sub chk_vrrp_walk($)
    my $vat;
    my $vsgt;
    my $vsgmt;
+   my $vst;
    my $inst;
    my $grp;
    my $addr;
 
 
    $vrouters = [];
+   $vscripts = [];
    $cnf->{'vrouters'} = $vrouters;
+   $cnf->{'vscripts'} = $vscripts;
 
 
    # connects to agent
@@ -496,6 +527,17 @@ sub chk_vrrp_walk($)
       };
    };
 
+   # Load scripts table
+   $vst = $sess->gettable('KEEPALIVED-MIB::vrrpScriptTable');
+   if (( defined($vst) ))
+   {
+      for $key (keys(%{$vst}))
+      {
+         $inst = $vst->{$key};
+         $vscripts->[@{$vscripts}] = $inst;
+      };
+   };
+
 
    return(0);
 };
@@ -514,6 +556,7 @@ sub main(@)
    my $cnf;
    my $rc;
    my $vrouter;
+   my $vscript;
 
    $cnf = {};
 
@@ -540,22 +583,29 @@ sub main(@)
    chk_vrrp_analyze($cnf);
 
 
-   # print summary
+   # print router summary
    if ($cnf->{'count_all'} == 0)
    {
       printf("Keepalived is not running or is not configured properly.|\n");
       exit(2);
    };
    printf("Virtual Routers: ");
-   if ($cnf->{'count_crit'} != 0)
+   if ($cnf->{'count_crit_rtr'} != 0)
    {
-      printf("%i CRIT, ", $cnf->{'count_crit'});
+      printf("%i CRIT, ", $cnf->{'count_crit_rtr'});
    };
-   if ($cnf->{'count_warn'} != 0)
+   if ($cnf->{'count_warn_rtr'} != 0)
    {
-      printf("%i WARN, ", $cnf->{'count_warn'});
+      printf("%i WARN, ", $cnf->{'count_warn_rtr'});
    };
-   printf("%i OKAY - %s|\n", $cnf->{'count_okay'}, $cnf->{'keepalived'});
+   printf("%i OKAY", $cnf->{'count_okay_rtr'});
+   # print script summary
+   printf(" ---- Check Scripts: ");
+   if ($cnf->{'count_crit_script'} != 0)
+   {
+      printf("%i CRIT, ", $cnf->{'count_crit_script'});
+   }
+   printf("%i OKAY - %s|\n", $cnf->{'count_okay_script'}, $cnf->{'keepalived'});
    if ($cnf->{'quiet'} == 1)
    {
       return(chk_vrrp_nagios_code($cnf));
@@ -568,9 +618,9 @@ sub main(@)
       printf("-\n");
       printf("Router ID:     %s\n", $cnf->{'routerId'});
       printf("Check Method:  %s\n", $cnf->{'checkMethod'});
-      printf("vRouter Count: %i\n", $cnf->{'count_all'});
+      printf("vRouter Count: %i\n", scalar(keys @{$cnf->{'vrouters'}}));
    };
-   foreach $vrouter (@{$cnf->{'crit'}}, @{$cnf->{'warn'}}, @{$cnf->{'okay'}})
+   foreach $vrouter (@{$cnf->{'critRouter'}}, @{$cnf->{'warnRouter'}}, @{$cnf->{'okayRouter'}})
    {
       printf("-\n");
       if ($cnf->{'terse'} == 1)
@@ -580,6 +630,23 @@ sub main(@)
          chk_vrrp_detail($vrouter);
       };
    };
+   if ($cnf->{'terse'} == 0)
+   {
+      printf("-\n");
+      printf("vScripts Count: %i\n", scalar(keys @{$cnf->{'vscripts'}}));
+      for $vscript (sort {$a->{'vrrpScriptName'} cmp $b->{'vrrpScriptName'}} @{$cnf->{'vscripts'}})
+      {
+         printf("-\n");
+         if ($vscript->{'vrrpScriptName'} =~ $cnf->{'excludeScript'})
+         {
+            $vscript->{'vrrpScriptResult'} .= " (Excluded)";
+         }
+         chk_vrrp_print($vscript, 'vrrpScriptName',     "Script Name");
+         chk_vrrp_print($vscript, 'vrrpScriptResult',     "Script Result");
+         printf("-\n");
+      };
+   };
+
    printf("|\n");
 
 
